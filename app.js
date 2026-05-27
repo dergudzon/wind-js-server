@@ -159,74 +159,76 @@ function run(targetMoment) {
 function getGribData(targetMoment) {
   var deferred = Q.defer();
 
-  var stamp =
-    moment(targetMoment).format("YYYYMMDD") +
-    roundHours(moment(targetMoment).hour(), 6);
+  function fetchStamp(fetchMoment, isFallback) {
+    var stamp =
+      moment(fetchMoment).format("YYYYMMDD") +
+      roundHours(moment(fetchMoment).hour(), 6);
 
-  // check if we already have this stamp in json-data
-  if (checkPath("json-data/" + stamp + ".json", false)) {
-    console.log("already have " + stamp + ", skipping request");
-    deferred.resolve({ stamp: false, targetMoment: false });
-    return deferred.promise;
+    if (checkPath("json-data/" + stamp + ".json", false)) {
+      console.log("already have " + stamp + ", skipping request");
+      deferred.resolve({ stamp: false, targetMoment: false });
+      return;
+    }
+
+    var dateStr = moment(fetchMoment).format("YYYYMMDD");
+    var hourStr = roundHours(moment(fetchMoment).hour(), 6);
+
+    request
+      .get({
+        url: baseDir,
+        headers: { "User-Agent": requestUserAgent },
+        qs: {
+          file: "gfs.t" + hourStr + "z.pgrb2.1p00.f000",
+          lev_10_m_above_ground: "on",
+          lev_surface: "on",
+          var_TMP: "on",
+          var_UGRD: "on",
+          var_VGRD: "on",
+          leftlon: 0,
+          rightlon: 360,
+          toplat: 90,
+          bottomlat: -90,
+          dir: "/gfs." + dateStr + "/" + hourStr + "/atmos",
+        },
+      })
+      .on("error", function (err) {
+        console.log("request error: " + err.message + " | " + stamp);
+        deferred.resolve({ stamp: false, targetMoment: false });
+      })
+      .on("response", function (response) {
+        console.log("response " + response.statusCode + " | " + stamp);
+
+        if (response.statusCode != 200) {
+          if (!isFallback) {
+            console.log(stamp + " not available, trying previous cycle..");
+            fetchStamp(moment(fetchMoment).subtract(6, "hours"), true);
+          } else {
+            console.log(
+              "ERROR: NOAA data unavailable for current and previous cycle (" +
+                stamp +
+                "), will retry on next cycle"
+            );
+            deferred.resolve({ stamp: false, targetMoment: false });
+          }
+        } else {
+          if (!checkPath("json-data/" + stamp + ".json", false)) {
+            console.log("piping " + stamp);
+            checkPath("grib-data", true);
+            var file = fs.createWriteStream("grib-data/" + stamp + ".f000");
+            response.pipe(file);
+            file.on("finish", function () {
+              file.close();
+              deferred.resolve({ stamp: stamp, targetMoment: fetchMoment });
+            });
+          } else {
+            console.log("already have " + stamp + ", not downloading again");
+            deferred.resolve({ stamp: false, targetMoment: false });
+          }
+        }
+      });
   }
 
-  var dateStr = moment(targetMoment).format("YYYYMMDD");
-  var hourStr = roundHours(moment(targetMoment).hour(), 6);
-
-  // make a single request for the current cycle
-  request
-    .get({
-      url: baseDir,
-      headers: {
-        "User-Agent": requestUserAgent,
-      },
-      qs: {
-        file: "gfs.t" + hourStr + "z.pgrb2.1p00.f000",
-        lev_10_m_above_ground: "on",
-        lev_surface: "on",
-        var_TMP: "on",
-        var_UGRD: "on",
-        var_VGRD: "on",
-        leftlon: 0,
-        rightlon: 360,
-        toplat: 90,
-        bottomlat: -90,
-        dir: "/gfs." + dateStr + "/" + hourStr + "/atmos",
-      },
-    })
-    .on("error", function (err) {
-      console.log("request error: " + err.message + " | " + stamp);
-      deferred.resolve({ stamp: false, targetMoment: false });
-    })
-    .on("response", function (response) {
-      console.log("response " + response.statusCode + " | " + stamp);
-
-      if (response.statusCode != 200) {
-        // data not available yet, will retry on next 15-min cycle
-        console.log("data not available for " + stamp + ", will retry later");
-        deferred.resolve({ stamp: false, targetMoment: false });
-      } else {
-        // don't rewrite stamps
-        if (!checkPath("json-data/" + stamp + ".json", false)) {
-          console.log("piping " + stamp);
-
-          // mk sure we've got somewhere to put output
-          checkPath("grib-data", true);
-
-          // pipe the file, resolve the valid time stamp
-          var file = fs.createWriteStream("grib-data/" + stamp + ".f000");
-          response.pipe(file);
-          file.on("finish", function () {
-            file.close();
-            deferred.resolve({ stamp: stamp, targetMoment: targetMoment });
-          });
-        } else {
-          console.log("already have " + stamp + ", not downloading again");
-          deferred.resolve({ stamp: false, targetMoment: false });
-        }
-      }
-    });
-
+  fetchStamp(targetMoment, false);
   return deferred.promise;
 }
 

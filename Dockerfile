@@ -15,6 +15,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       default-jre-headless \
       dumb-init \
+      gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Set JAVA_HOME so grib2json shell script can find java
@@ -30,18 +31,17 @@ COPY --from=deps /usr/src/app/node_modules ./node_modules
 # Copy application source
 COPY . .
 
-# Create non-root user (added to node group for volume write access) and required directories
-RUN groupadd -r appuser && \
-    useradd -r -g appuser -G node appuser && \
-    mkdir -p /usr/src/app/json-data /usr/src/app/grib-data && \
-    chown -R appuser:appuser /usr/src/app
+# Create required directories (permissions fixed at runtime by entrypoint)
+RUN mkdir -p /usr/src/app/json-data /usr/src/app/grib-data
 
-USER appuser
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 7000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "require('http').get('http://localhost:7000/alive', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })"
 
-ENTRYPOINT ["dumb-init", "--"]
+# Entrypoint runs as root, chowns volumes, then drops to node user via gosu
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "app.js"]
