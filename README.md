@@ -11,12 +11,46 @@ Data Vis demo here: http://danwild.github.io/leaflet-velocity
 Note that this is intended as a crude demonstration, not intended for production use.
 To get to production; you should improve upon this or build your own.
 
-## install, run:
+## Running with Docker Compose (recommended)
 
-(assumes you have node and npm installed)
+Requires [Docker](https://docs.docker.com/get-docker/) with Compose plugin.
+
+```bash
+# copy and edit config (CORS whitelist, retention, etc.)
+cp .env.example .env
+
+# build and start
+docker compose up -d
+
+# view logs
+docker compose logs -f
+
+# stop
+docker compose down
+```
+
+The `json-data/` folder is mounted as a host volume — wind data persists across container restarts and rebuilds. Files older than `RETENTION_DAYS` (default: 30) are removed automatically on startup and once per day.
+
+## Configuration
+
+Copy `.env.example` to `.env` and adjust as needed:
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `7000` | Server port |
+| `CORS_WHITELIST` | localhost origins | Comma-separated allowed origins |
+| `RETENTION_DAYS` | `30` | Days of JSON data to keep |
+| `NOAA_BASE_URL` | NOMADS GFS filter URL | Override NOAA data source |
+| `HARVEST_DEPTH_DAYS` | `7` | Days back to search for data |
+| `REQUEST_DELAY_MS` | `2000` | Delay between NOAA requests (ms) |
+
+## install, run (without Docker):
+
+Requires Node.js, npm, and Java JRE (for grib2json conversion).
 
 ```bash
 # from project root:
+cp .env.example .env
 npm install
 npm start
 ```
