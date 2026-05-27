@@ -8,7 +8,7 @@ var cors = require('cors');
 
 var app = express();
 var port = process.env.PORT || 7000;
-var baseDir ='http://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_1p00.pl';
+var baseDir ='https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_1p00.pl';
 
 // cors config
 var whitelist = [
@@ -52,6 +52,7 @@ app.get('/latest', cors(corsOptions), function(req, res){
 		res.setHeader('Content-Type', 'application/json');
 		res.sendFile(fileName, {}, function (err) {
 			if (err) {
+				if (res.headersSent) return;
 				console.log(stamp +' doesnt exist yet, trying previous interval..');
 				sendLatest(moment(targetMoment).subtract(6, 'hours'));
 			}
@@ -93,6 +94,7 @@ app.get('/nearest', cors(corsOptions), function(req, res, next){
 		res.setHeader('Content-Type', 'application/json');
 		res.sendFile(fileName, {}, function (err) {
 			if(err) {
+				if (res.headersSent) return;
 				var nextTarget = searchForwards ? moment(targetMoment).add(6, 'hours') : moment(targetMoment).subtract(6, 'hours');
 				sendNearestTo(nextTarget);
 			}
@@ -151,10 +153,12 @@ function getGribData(targetMoment){
         }
 
 		var stamp = moment(targetMoment).format('YYYYMMDD') + roundHours(moment(targetMoment).hour(), 6);
+		var dateStr = moment(targetMoment).format('YYYYMMDD');
+		var hourStr = roundHours(moment(targetMoment).hour(), 6);
 		request.get({
 			url: baseDir,
 			qs: {
-				file: 'gfs.t'+ roundHours(moment(targetMoment).hour(), 6) +'z.pgrb2.1p00.f000',
+				file: 'gfs.t'+ hourStr +'z.pgrb2.1p00.f000',
 				lev_10_m_above_ground: 'on',
 				lev_surface: 'on',
 				var_TMP: 'on',
@@ -164,7 +168,7 @@ function getGribData(targetMoment){
 				rightlon: 360,
 				toplat: 90,
 				bottomlat: -90,
-				dir: '/gfs.'+stamp
+				dir: '/gfs.'+ dateStr +'/'+ hourStr +'/atmos'
 			}
 
 		}).on('error', function(err){
