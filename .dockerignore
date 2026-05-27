@@ -1,0 +1,5 @@
+node_modules
+json-data
+grib-data
+.env
+.git

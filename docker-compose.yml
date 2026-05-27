@@ -1,0 +1,32 @@
+services:
+  wind-js-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wind-js-server
+    ports:
+      - "7000:7000"
+    environment:
+      - NODE_ENV=production
+      - PORT=7000
+    env_file:
+      - .env
+    volumes:
+      - ./json-data:/usr/src/app/json-data
+      - grib-data:/usr/src/app/grib-data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:7000/alive', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  grib-data:
