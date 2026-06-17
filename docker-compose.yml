@@ -12,7 +12,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./json-data:/usr/src/app/json-data
+      - ${JSON_DATA_PATH:-./json-data}:/usr/src/app/json-data
       - grib-data:/usr/src/app/grib-data
     restart: unless-stopped
     healthcheck:
