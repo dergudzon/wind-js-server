@@ -18,7 +18,7 @@ var requestDelayMs = parseInt(process.env.REQUEST_DELAY_MS, 10) || 2000;
 var requestUserAgent =
   process.env.REQUEST_USER_AGENT ||
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-var retentionDays = parseInt(process.env.RETENTION_DAYS, 10) || 30;
+var retentionDays = parseInt(process.env.RETENTION_DAYS, 10) || 0;
 
 // cors config - read whitelist from env (comma-separated) or use defaults
 var defaultWhitelist = [
@@ -313,6 +313,8 @@ function checkPath(path, mkdir) {
  * Remove JSON data files older than retentionDays
  */
 function cleanupOldData() {
+  if (!retentionDays) return;
+
   var dataDir = __dirname + "/json-data";
   var cutoff = moment().subtract(retentionDays, "days");
 
