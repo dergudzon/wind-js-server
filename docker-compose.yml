@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: wind-js-server
     ports:
-      - "7000:7000"
+      - "127.0.0.1:7000:7000"
     environment:
       - NODE_ENV=production
       - PORT=7000

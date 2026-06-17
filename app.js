@@ -64,14 +64,13 @@ app.get("/latest", cors(corsOptions), function (req, res) {
       roundHours(moment(targetMoment).hour(), 6);
     var fileName = __dirname + "/json-data/" + stamp + ".json";
 
+    if (!checkPath("json-data/" + stamp + ".json", false)) {
+      console.log(stamp + " doesnt exist yet, trying previous interval..");
+      return sendLatest(moment(targetMoment).subtract(6, "hours"));
+    }
+
     res.setHeader("Content-Type", "application/json");
-    res.sendFile(fileName, {}, function (err) {
-      if (err) {
-        if (res.headersSent) return;
-        console.log(stamp + " doesnt exist yet, trying previous interval..");
-        sendLatest(moment(targetMoment).subtract(6, "hours"));
-      }
-    });
+    res.sendFile(fileName);
   }
 
   sendLatest(moment().utc());
@@ -98,7 +97,25 @@ app.get("/nearest", cors(corsOptions), function (req, res, next) {
         sendNearestTo(moment(targetMoment).add(limit, "days"));
         return;
       } else {
-        return next(new Error("No data within searchLimit"));
+        // No local data found — try to download from NOAA
+        console.log("No local data for " + time + ", attempting NOAA download..");
+        getGribData(moment.utc(time))
+          .then(function (response) {
+            if (!response.stamp) {
+              return next(new Error("No data available from local cache or NOAA"));
+            }
+            return convertGribToJson(response.stamp);
+          })
+          .then(function (stamp) {
+            if (stamp) {
+              res.setHeader("Content-Type", "application/json");
+              res.sendFile(__dirname + "/json-data/" + stamp + ".json");
+            }
+          })
+          .catch(function (err) {
+            next(err);
+          });
+        return;
       }
     }
 
@@ -107,16 +124,15 @@ app.get("/nearest", cors(corsOptions), function (req, res, next) {
       roundHours(moment(targetMoment).hour(), 6);
     var fileName = __dirname + "/json-data/" + stamp + ".json";
 
+    if (!checkPath("json-data/" + stamp + ".json", false)) {
+      var nextTarget = searchForwards
+        ? moment(targetMoment).add(6, "hours")
+        : moment(targetMoment).subtract(6, "hours");
+      return sendNearestTo(nextTarget);
+    }
+
     res.setHeader("Content-Type", "application/json");
-    res.sendFile(fileName, {}, function (err) {
-      if (err) {
-        if (res.headersSent) return;
-        var nextTarget = searchForwards
-          ? moment(targetMoment).add(6, "hours")
-          : moment(targetMoment).subtract(6, "hours");
-        sendNearestTo(nextTarget);
-      }
-    });
+    res.sendFile(fileName);
   }
 
   if (time && moment(time).isValid()) {
@@ -144,7 +160,7 @@ setInterval(function () {
 function run(targetMoment) {
   getGribData(targetMoment).then(function (response) {
     if (response.stamp) {
-      convertGribToJson(response.stamp, response.targetMoment);
+      convertGribToJson(response.stamp);
     }
   });
 }
@@ -232,31 +248,30 @@ function getGribData(targetMoment) {
   return deferred.promise;
 }
 
-function convertGribToJson(stamp, targetMoment) {
-  // mk sure we've got somewhere to put output
+function convertGribToJson(stamp) {
   checkPath("json-data", true);
 
-  var exec = require("child_process").exec,
-    child;
-
-  child = exec(
-    "converter/bin/grib2json --data --output json-data/" +
-      stamp +
-      ".json --names --compact grib-data/" +
-      stamp +
-      ".f000",
-    { maxBuffer: 500 * 1024 },
-    function (error, stdout, stderr) {
-      if (error) {
-        console.log("exec error: " + error);
-      } else {
-        console.log("converted..");
-
-        // don't keep raw grib data
-        exec("rm grib-data/*");
-      }
-    },
-  );
+  var exec = require("child_process").exec;
+  return new Promise(function (resolve, reject) {
+    exec(
+      "converter/bin/grib2json --data --output json-data/" +
+        stamp +
+        ".json --names --compact grib-data/" +
+        stamp +
+        ".f000",
+      { maxBuffer: 500 * 1024 },
+      function (error) {
+        if (error) {
+          console.log("exec error: " + error);
+          reject(error);
+        } else {
+          console.log("converted..");
+          exec("rm grib-data/*");
+          resolve(stamp);
+        }
+      },
+    );
+  });
 }
 
 /**
