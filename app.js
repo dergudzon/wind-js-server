@@ -78,18 +78,31 @@ app.get("/latest", cors(corsOptions), function (req, res) {
 
 app.get("/nearest", cors(corsOptions), function (req, res, next) {
   var time = req.query.timeIso;
-  var limit = req.query.searchLimit;
+  var limit = req.query.searchLimit !== undefined ? parseInt(req.query.searchLimit, 10) : null;
   var searchForwards = false;
 
   /**
    * Find and return the nearest available 6 hourly pre-parsed JSON data
    * If limit provided, searches backwards to limit, then forwards to limit before failing.
+   * If limit=0, only an exact timestamp match is accepted.
    *
    * @param targetMoment {Object} UTC moment
    */
   function sendNearestTo(targetMoment) {
+    if (!limit) {
+      var exactStamp =
+        moment(targetMoment).format("YYYYMMDD") +
+        roundHours(moment(targetMoment).hour(), 6);
+      if (!checkPath("json-data/" + exactStamp + ".json", false)) {
+        return next(new Error("No exact data for timestamp: " + exactStamp));
+      }
+      res.setHeader("Content-Type", "application/json");
+      res.sendFile(__dirname + "/json-data/" + exactStamp + ".json");
+      return;
+    }
+
     if (
-      limit &&
+      limit > 0 &&
       Math.abs(moment.utc(time).diff(targetMoment, "days")) >= limit
     ) {
       if (!searchForwards) {
